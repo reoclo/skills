@@ -31,7 +31,7 @@ See Anthropic's skill-authoring guidance for the full format.
 
 | Skill | Use when… |
 |-------|-----------|
-| `reoclo-cli-dev` | developing/building/testing/debugging the reoclo CLI — Bun toolchain, tests, and Bun `--compile` runtime quirks. |
+| `reoclo-cli-usage` | operating Reoclo from the terminal with the `reoclo` CLI — login, servers/apps, deploy, logs, exec/shell, tunnels, env, domains, scripting. |
 
 ## Consuming these skills
 
@@ -46,7 +46,7 @@ Claude Code discovers project skills at `.claude/skills/`, so bridge each public
 a symlink:
 
 ```bash
-mkdir -p .claude/skills && ln -sfn ../../skills/reoclo-cli-dev .claude/skills/reoclo-cli-dev
+mkdir -p .claude/skills && ln -sfn ../../skills/reoclo-cli-usage .claude/skills/reoclo-cli-usage
 ```
 
 ### Personal / global
