@@ -36,7 +36,7 @@ reoclo org use <slug> # switch active organization
 | `--quiet` | suppress non-error output |
 | `--verbose` | log HTTP requests (tokens redacted) |
 | `--no-color` | disable ANSI colors |
-| `--profile <name>` | use a named profile (multi-account/multi-env) |
+| `--profile <name>` | use a named profile (multi-account/multi-env); equivalent to `$REOCLO_PROFILE` |
 
 ## Everyday commands
 
@@ -101,11 +101,23 @@ reoclo apps ls -o yaml
 
 ## Profiles
 
+Each profile holds its own credential + active org, so profiles let you switch
+between accounts/environments (e.g. prod vs. staging).
+
 ```bash
-reoclo profile ls
-reoclo --profile staging login
-reoclo --profile staging servers ls
+reoclo profile ls                          # list configured profiles
+reoclo login --profile staging             # create / authenticate a profile
+reoclo profile use staging                 # set the default profile persistently
 ```
+
+Select a profile per-invocation two ways — both honored by every command:
+
+```bash
+reoclo --profile staging servers ls        # global flag (works before or after the subcommand)
+REOCLO_PROFILE=staging reoclo servers ls   # env var (handy to export for a whole shell session)
+```
+
+Precedence: `--profile` flag → `$REOCLO_PROFILE` → the active profile from `reoclo profile use`.
 
 ## Shell completion
 
