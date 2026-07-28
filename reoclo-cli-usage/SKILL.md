@@ -63,6 +63,27 @@ reoclo exec --env-file .env.prod <server> -- ./migrate.sh  # inject env (masked 
 reoclo shell <server>                                   # interactive shell
 ```
 
+## Server power (cloud)
+
+For cloud-managed servers, drive the provider's power controls. These work only
+where the server has a cloud provider and credentials configured, and only for
+operations that provider supports (check with `capabilities`). This is separate
+from `reoclo servers reboot`, which reboots the OS through the runner.
+
+```bash
+reoclo servers power capabilities <server>   # what this provider supports
+reoclo servers power status <server>         # live power state
+reoclo servers power on <server>
+reoclo servers power off <server> --yes      # hard power cut; --yes skips the prompt
+reoclo servers power shutdown <server>       # graceful shutdown
+reoclo servers power reboot <server>         # provider reboot (not the runner reboot)
+reoclo servers power reset <server>          # hard reset
+```
+
+Add `--wait` to block until the server reaches its target state (for example
+`reoclo servers power off <server> --wait`). `off`, `shutdown`, `reboot` and
+`reset` prompt for confirmation unless you pass `--yes`.
+
 ## Tunnels
 
 Authenticated TCP/UDP tunnels through a server's runner (no SSH keys, no inbound firewall rules):
