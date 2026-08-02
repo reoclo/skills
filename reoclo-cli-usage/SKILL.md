@@ -330,11 +330,15 @@ reoclo mcp                             # start the stdio MCP server (for MCP-cap
 
 ## Scripting
 
-`-o json` makes every command pipeable:
+Most commands honour `-o json|yaml` for piping. Two things to know:
+
+- **List commands emit one JSON object per line (NDJSON), not a JSON array** — filter each line directly with `jq -r '.field'`, not `jq '.[]'` (which yields nothing).
+- **`reoclo secrets get` prints the bare secret value** and ignores `-o`, so it composes with `$(...)`.
 
 ```bash
-reoclo servers ls -o json | jq -r '.[] | select(.status=="active") | .slug'
+reoclo servers ls -o json | jq -r 'select(.status=="active") | .slug'
 reoclo apps ls -o yaml
+VALUE=$(reoclo secrets get DB_PASSWORD --project prod)   # raw value, not JSON
 ```
 
 ## Shell completion
