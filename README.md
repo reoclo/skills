@@ -1,12 +1,12 @@
 # reoclo/skills
 
-Shared **agent skills** for [Reoclo](https://reoclo.com) tooling — the [`reoclo` CLI](https://github.com/reoclo/cli) today, and more to come. Skills are reference guides that Claude Code (and other skill-aware agents) load on demand to apply proven techniques.
+Shared **agent skills** for [Reoclo](https://reoclo.com) tooling: the [`reoclo` CLI](https://github.com/reoclo/cli) today, and more to come. Skills are reference guides that Claude Code (and other skill-aware agents) load on demand to apply proven techniques.
 
-This repository is **public** and free to use — clone it, vendor it, or add it as a submodule in your own project.
+This repository is **public** and free to use. Clone it, vendor it, or add it as a submodule in your own project.
 
 ## Layout
 
-Flat namespace — one directory per skill, each with a `SKILL.md`:
+Flat namespace, one directory per skill, each with a `SKILL.md`:
 
 ```
 <skill-name>/
@@ -21,7 +21,8 @@ tool (`reoclo-cli-*`, future `reoclo-api-*`, `reoclo-web-*`, …).
 
 | Skill | Use when… |
 |-------|-----------|
-| `reoclo-cli-usage` | operating Reoclo from the terminal with the `reoclo` CLI — login, servers/apps, deploy, logs, exec/shell, tunnels, env, domains, scripting. |
+| `reoclo-cli-usage` | operating Reoclo from the terminal with the `reoclo` CLI: login, servers/apps, deploy, logs, exec/shell, tunnels, env, domains, scripting. |
+| `reoclo-github-actions` | wiring Reoclo into GitHub Actions or Gitea Actions: run, checkout, docker-auth, and load-secrets. |
 
 ## Using these skills
 
@@ -50,7 +51,7 @@ A fresh checkout then needs `git submodule update --init skills` for the symlink
 
 ### Copy a single skill
 
-Skills are self-contained directories — copy the one you need into your project's `.claude/skills/`:
+Skills are self-contained directories. Copy the one you need into your project's `.claude/skills/`:
 
 ```bash
 cp -R skills/reoclo-cli-usage /path/to/project/.claude/skills/
@@ -61,10 +62,10 @@ cp -R skills/reoclo-cli-usage /path/to/project/.claude/skills/
 Contributions welcome. Each skill should follow these rules:
 
 - Directory name **must equal** the frontmatter `name` (letters, numbers, hyphens only).
-- `description` starts with **"Use when …"** and lists *triggering conditions only* — never a workflow summary (a summarized workflow makes agents skip the body).
+- `description` starts with **"Use when …"** and lists *triggering conditions only*, never a workflow summary (a summarized workflow makes agents skip the body).
 - Keep skills concise (aim < 500 words); move heavy reference or reusable tools into sibling files.
 - One excellent example beats many mediocre ones.
-- This repository is **public** — never include private hostnames, credentials, or internal-only infrastructure.
+- This repository is **public**. Never include private hostnames, credentials, or internal-only infrastructure.
 
 See Anthropic's [skill-authoring guidance](https://docs.claude.com/en/docs/claude-code/skills) for the full format.
 
