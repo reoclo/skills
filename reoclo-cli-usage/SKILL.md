@@ -58,7 +58,7 @@ Every top-level command group. Drill in with `<group> --help`.
 | `logs` | tail, search, systemd journal, sources, storage stats and usage |
 | `env` | application environment variables (write-only values) |
 | `domains` | register, verify, and health-check domains |
-| `secrets` | secret projects, keys, reveal, set, import |
+| `secrets` | secret projects, keys, reveal, set, import, inject |
 | `run` | resolve granted secrets and run a command with them as env vars |
 | `monitors` | uptime monitors |
 | `status-pages` | public status pages |
@@ -186,7 +186,7 @@ reoclo domains rm <fqdnOrId>               # decommission
 
 ## Secrets and run
 
-Secrets live in projects. `run` injects the secrets a credential is granted into a child process as env vars.
+Secrets live in projects. `run` injects the secrets a credential is granted into a child process as env vars. `run --env-file` and `secrets inject` render a `.env` template of `op://` references, resolving each value from Reoclo (a drop-in for 1Password's `op inject`, and the `op` binary is not needed).
 
 ```bash
 reoclo secrets projects --help         # manage secret projects
@@ -195,9 +195,13 @@ reoclo secrets get <key> --project <name>   # reveal a value
 reoclo secrets set <key> --project <name>   # create or update
 reoclo secrets rm <key> --project <name>
 reoclo secrets import --help           # import from an external source
+reoclo secrets inject -i app.env.tpl -o app.env   # render an op:// template to a file (op inject drop-in)
 
 reoclo run -- ./my-app                 # run with granted secrets injected as env vars
+reoclo run --env-file app.env.tpl -- ./my-app   # inject only the op:// refs a template names
 ```
+
+An `op://` reference is `op://<project>/<item>/<field>`: it maps to the secret `<field>` in project `<project>` (`<item>` is ignored). `secrets inject` accepts an automation key or a login session. `run` needs an automation key.
 
 ## Monitoring: monitors, status pages, incidents
 
