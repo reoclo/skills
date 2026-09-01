@@ -415,8 +415,10 @@ Skills install to `.agents/skills/<name>/` (read by Codex, Gemini, opencode, and
 ## MCP server
 
 ```bash
-reoclo mcp                             # start the stdio MCP server (for MCP-capable agents)
+reoclo mcp --org <slug>                # start the stdio MCP server (for MCP-capable agents)
 ```
+
+Like every org-scoped command, `mcp` needs an organization or it exits immediately with a selection error. In an MCP client config, put `--org <slug>` in the command arguments. Starting it from a directory with a `.reoclo` binding also works.
 
 ## Raw API access
 
