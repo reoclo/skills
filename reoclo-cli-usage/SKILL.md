@@ -152,7 +152,7 @@ reoclo containers labels <server> <name>          # patch labels (see --help)
 ```bash
 reoclo apps ls                         # incl. a CI column: the app's CI gate state
 reoclo apps get <idOrSlug>
-reoclo apps deploy <idOrSlug>          # trigger a deployment (--ref <git-ref>, --wait)
+reoclo apps deploy <idOrSlug>          # trigger a deployment (--ref <git-ref>, --wait, --force-recreate)
 reoclo apps restart <idOrSlug>         # restart the backing container
 reoclo apps logs <idOrSlug>            # container logs for the app
 reoclo apps config --help              # manage deployment config
@@ -172,8 +172,8 @@ A stack is a definition group: one docker-compose file, one member application f
 ```bash
 reoclo groups ls                              # kind, member count, CI gate, last deploy
 reoclo groups get <group>                     # incl. deploy branch, CI gate, compose path
-reoclo groups deploy <group> --wait           # coordinated deploy of every managed member
-reoclo groups redeploy <group> <service>      # redeploy one compose service only
+reoclo groups deploy <group> --wait           # coordinated deploy of every managed member (--force-recreate)
+reoclo groups redeploy <group> <service>      # redeploy one compose service only (--force-recreate)
 reoclo groups run <group> <service> --wait    # run a one-shot task member (compose run --rm)
 reoclo groups task-runs <group>               # one-shot run history (status, exit code)
 reoclo groups deployments <group>             # coordinated deployment history
@@ -181,6 +181,8 @@ reoclo groups deployment <group> <numberOrId> --logs   # stages, per-service sli
 ```
 
 `--wait` polls until the deployment or task finishes and exits non-zero on failure (`--wait-timeout` seconds, default 600). A one-shot task is a compose service under `profiles:` (a migration, for example). Deploy the stack one time before you run a task: the run uses the env files from the last stack deployment.
+
+`--force-recreate` recreates containers even when the image and configuration did not change. Without it, a compose deploy leaves unchanged services running. Use it to restart a stack from a clean state, or to redeploy one unchanged service. On `groups redeploy` the recreate applies only to the named service.
 
 ## Logs
 
