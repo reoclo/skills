@@ -1,6 +1,6 @@
 ---
 name: reoclo-cli-usage
-description: Use when operating Reoclo from the terminal with the `reoclo` CLI (or its `rc` alias): signing in; managing servers, apps, containers, and deployments; cloud server power controls; tailing and searching logs; running commands or shells on servers; tunnels; env vars; domains; secrets and `run`; uptime monitors, status pages, and incidents; alerts and notification channels; git repos, providers, and container registries; scheduled operations; audit logs; and scripting Reoclo with JSON/YAML output.
+description: Use when operating Reoclo from the terminal with the `reoclo` CLI (or its `rc` alias): signing in; managing servers, apps, stacks (definition groups), containers, and deployments; cloud server power controls; tailing and searching logs; running commands or shells on servers; tunnels; env vars; domains and verified root domains; secrets, secret bindings, and `run`; uptime monitors, status pages and their components, and incidents; alerts and notification channels; git repos, providers, and container registries; scheduled operations; audit logs; raw API requests; installing reoclo agent skills; and scripting Reoclo with JSON/YAML output.
 ---
 
 # reoclo-cli-usage: Operate Reoclo from the CLI
@@ -54,14 +54,16 @@ Every top-level command group. Drill in with `<group> --help`.
 | `servers` | list, inspect, rename servers; health, ports, uptime, reboot; cloud `power` |
 | `containers` | fleet containers: list, inspect, logs, restart, recreate, scale, labels |
 | `apps` | list, inspect, deploy, restart apps; manage deployment `config` |
+| `groups` | definition groups (stacks): coordinated compose deployments and one-shot tasks; `stacks` is an alias |
 | `deployments` | deployment history, details, stages, build/runtime logs |
 | `logs` | tail, search, systemd journal, sources, storage stats and usage |
 | `env` | application environment variables (write-only values) |
 | `domains` | register, verify, and health-check domains |
-| `secrets` | secret projects, keys, reveal, set, import, inject |
+| `verified-domains` | verified root domains: claim, prove ownership, list attached resources |
+| `secrets` | secret projects, keys, reveal, set, import, inject, bind to apps/stacks |
 | `run` | resolve granted secrets and run a command with them as env vars |
 | `monitors` | uptime monitors |
-| `status-pages` | public status pages |
+| `status-pages` | public status pages and their `components` |
 | `incidents` | incidents and incident updates |
 | `alerts` | alert instances, ack/resolve, mutes, routing, catalog |
 | `channels` | notification channels (Slack, Discord, and so on) |
@@ -75,11 +77,16 @@ Every top-level command group. Drill in with `<group> --help`.
 | `tunnel` | TCP/UDP tunnels through a runner |
 | `checkout` / `deploy` | CI helpers: clone a repo on a server, external deploy sync |
 | `init` | link this project to an organization and install reoclo skills |
+| `skills` | install, list, and update reoclo agent skills without re-running `init` |
+| `api` | raw authenticated API request (escape hatch for endpoints without a command) |
+| `sync` | refresh this profile's cached capabilities from the server (no re-login) |
 | `mcp` | start the stdio MCP server |
 | `completion` | shell completion for bash, zsh, fish |
 | `upgrade` | self-update the CLI |
 
 Most commands accept either a resource **id** or its **slug**. Slugs are the recommended, stable identifier and are what tab completion offers.
+
+The collection verbs are interchangeable everywhere: `ls` and `list` are the same command, and so are `rm`, `delete`, and `remove`. Whichever spelling you try, the group answers.
 
 ## Servers
 
@@ -140,18 +147,37 @@ reoclo containers labels <server> <name>          # patch labels (see --help)
 ## Applications and deployments
 
 ```bash
-reoclo apps ls
+reoclo apps ls                         # incl. a CI column: the app's CI gate state
 reoclo apps get <idOrSlug>
-reoclo apps deploy <idOrSlug>          # trigger a deployment
+reoclo apps deploy <idOrSlug>          # trigger a deployment (--ref <git-ref>, --wait)
 reoclo apps restart <idOrSlug>         # restart the backing container
 reoclo apps logs <idOrSlug>            # container logs for the app
 reoclo apps config --help              # manage deployment config
 
-reoclo deployments ls                  # organization deployment history
+reoclo deployments ls                  # organization deployment history (--app to filter)
 reoclo deployments get <id>            # full details incl. build stages
-reoclo deployments stages <id>         # build / push / deploy stages
+reoclo deployments stages <id>         # pipeline stages with status and duration
 reoclo deployments logs <id> --build   # build stage logs
 ```
+
+For `deployments get` and `deployments logs`, the deployment id alone is enough. `--app` stays accepted for scripts that already pass it.
+
+## Stacks (definition groups)
+
+A stack is a definition group: one docker-compose file, one member application for each service, one coordinated deployment. `reoclo stacks` is an alias for `reoclo groups`.
+
+```bash
+reoclo groups ls                              # kind, member count, CI gate, last deploy
+reoclo groups get <group>                     # incl. deploy branch, CI gate, compose path
+reoclo groups deploy <group> --wait           # coordinated deploy of every managed member
+reoclo groups redeploy <group> <service>      # redeploy one compose service only
+reoclo groups run <group> <service> --wait    # run a one-shot task member (compose run --rm)
+reoclo groups task-runs <group>               # one-shot run history (status, exit code)
+reoclo groups deployments <group>             # coordinated deployment history
+reoclo groups deployment <group> <numberOrId> --logs   # stages, per-service slices, log tails
+```
+
+`--wait` polls until the deployment or task finishes and exits non-zero on failure (`--wait-timeout` seconds, default 600). A one-shot task is a compose service under `profiles:` (a migration, for example). Deploy the stack one time before you run a task: the run uses the env files from the last stack deployment.
 
 ## Logs
 
@@ -172,6 +198,8 @@ reoclo env set KEY=value [KEY2=value2 ...]
 reoclo env rm KEY
 ```
 
+A successful `env set` does not redeploy the application. The new values apply on the next deploy.
+
 ## Domains
 
 ```bash
@@ -182,6 +210,17 @@ reoclo domains verify <fqdnOrId>           # TXT record to add
 reoclo domains dns <fqdnOrId>              # DNS records + verification status
 reoclo domains health <fqdnOrId>           # DNS + TLS + uptime
 reoclo domains rm <fqdnOrId>               # decommission
+```
+
+Root-domain ownership is separate from per-FQDN registration. `verified-domains` claims a root (for example `example.com`) and proves ownership with one TXT record. Domains you then add under a verified root verify automatically.
+
+```bash
+reoclo verified-domains ls
+reoclo verified-domains get <rootOrId>
+reoclo verified-domains resources <rootOrId>   # domains, apps, status pages under this root
+reoclo verified-domains add <rootDomain>       # claim + start verification
+reoclo verified-domains verify <rootOrId>      # the TXT record that proves ownership
+reoclo verified-domains rm <rootOrId>
 ```
 
 ## Secrets and run
@@ -203,6 +242,23 @@ reoclo run --env-file app.env.tpl -- ./my-app   # inject only the op:// refs a t
 
 An `op://` reference is `op://<project>/<item>/<field>`: it maps to the secret `<field>` in project `<project>` (`<item>` is ignored). `secrets inject` accepts an automation key or a login session. `run` needs an automation key.
 
+### Bind secrets to apps and stacks
+
+`bind` links a secret project to an application or a stack, so the project's secrets inject as env vars at deploy time:
+
+```bash
+reoclo secrets bind infra --app api                     # every key in the project
+reoclo secrets bind storage --group portfolio \
+    --key MINIO_ROOT_USER --key MINIO_ROOT_PASSWORD     # selected keys, into a stack
+reoclo secrets bind storage --app public-web \
+    --key MINIO_ROOT_USER=S3_ACCESS_KEY_ID              # rename on bind
+
+reoclo secrets bindings --app <app>                     # list bindings + key selections
+reoclo secrets unbind <bindingId> --app <app>           # a unique id prefix is enough
+```
+
+Exactly one target: `--app <idOrSlug>` or `--group <idOrSlug>`. `--key <KEY[=NEW_NAME]>` is repeatable (omit it to inject every key), `--prefix <PREFIX_>` prefixes un-renamed keys, and `--scope` is `production`, `preview`, or `both` (default `production`). A stack-level binding injects into **every member**. To give one member only part of a project, bind that member with `--app` and `--key`. Bindings apply on the next deploy.
+
 ## Monitoring: monitors, status pages, incidents
 
 ```bash
@@ -212,6 +268,19 @@ reoclo incidents ls | get <id> | create | update <id> | add-update <id>
 ```
 
 `reoclo incidents update <id> --state resolved` resolves an incident. Use `--help` on `create` / `update` for the field flags.
+
+Status pages are built from components. Manage them under `status-pages components`:
+
+```bash
+reoclo status-pages components ls <page>
+reoclo status-pages components get <page> <component>
+reoclo status-pages components add <page>              # name, order, visibility, checks
+reoclo status-pages components update <page> <component>
+reoclo status-pages components pin <page> <component>  # override the derived status
+reoclo status-pages components unpin <page> <component>
+reoclo status-pages components reorder <page> <components...>
+reoclo status-pages components rm <page> <component>
+```
 
 ## Alerts and notification channels
 
@@ -304,6 +373,8 @@ REOCLO_PROFILE=staging reoclo servers ls   # env var (handy to export for a shel
 
 Precedence: `--profile` flag, then `$REOCLO_PROFILE`, then the active profile from `reoclo profile use`.
 
+`reoclo sync` refreshes the profile's cached capabilities from the server without a re-login. Run it when the server has granted the credential new permissions and a command still reports them missing.
+
 ## Keyring
 
 By default the CLI stores tokens in the OS keyring. Move them if you need to:
@@ -316,7 +387,7 @@ reoclo keyring export     # OS keyring -> config.json
 
 ## CI and automation credentials
 
-Automation keys are scoped to a fixed command set: `apps deploy`, `apps restart`, `exec`, `shell`, `checkout`, `registry login`, `registry logout`, `deploy sync`, and `run`. Everything else needs an interactive org login.
+Automation keys are scoped to a fixed command set: `apps deploy`, `apps restart`, `exec`, `shell`, `checkout`, `registry login`, `registry logout`, `deploy sync`, `run`, and `secrets inject`. Everything else needs an interactive org login.
 
 CI helpers:
 
@@ -326,17 +397,43 @@ reoclo deploy sync --help              # external deploy sync
 reoclo registry login <serverId>       # docker login on a managed server
 ```
 
+## Agent skills
+
+`reoclo init` links a project to an organization and offers to install reoclo agent skills. The `skills` group manages them on their own:
+
+```bash
+reoclo skills install    # pick skills, detect agent harnesses (`skills init` is an alias)
+reoclo skills list       # skills available in the reoclo/skills repo + which are installed
+reoclo skills update     # refresh already-installed skills to the latest, in place
+```
+
+Skills install to `.agents/skills/<name>/` (read by Codex, Gemini, opencode, and Cursor) with a `.claude/skills/<name>` link for Claude Code. `skills update` only refreshes what is already installed and never adds new skills.
+
 ## MCP server
 
 ```bash
 reoclo mcp                             # start the stdio MCP server (for MCP-capable agents)
 ```
 
+## Raw API access
+
+When no command covers an endpoint, `reoclo api` sends an authenticated request and prints the JSON response (in the spirit of `gh api`). It rides the same profile auth and base URL as every other command, and `{tenant}` in the path expands to the current organization's tenant id.
+
+```bash
+reoclo api '/tenants/{tenant}/secret-projects'           # GET is the default
+reoclo api '/tenants/{tenant}/servers/' -q page=2        # -q key=value appends query params
+reoclo api <path> -f name=web-2 -f cores=4               # JSON body fields; body implies POST
+reoclo api <path> -X PATCH --raw-field note=123          # --raw-field keeps the value a string
+reoclo api <path> -X PUT --data @body.json               # raw JSON body (@file, or - for stdin)
+```
+
+`-f` auto-types `true`, `false`, `null`, and numbers. `--data` cannot combine with `-f`/`--raw-field`.
+
 ## Scripting
 
-Most commands honour `-o json|yaml` for piping. Two things to know:
+Most commands honor `-o json|yaml` for piping. Two things to know:
 
-- **List commands emit one JSON object per line (NDJSON), not a JSON array** — filter each line directly with `jq -r '.field'`, not `jq '.[]'` (which yields nothing).
+- **List commands emit one JSON object per line (NDJSON), not a JSON array.** Filter each line directly with `jq -r '.field'`, not `jq '.[]'` (which yields nothing).
 - **`reoclo secrets get` prints the bare secret value** and ignores `-o`, so it composes with `$(...)`.
 
 ```bash
