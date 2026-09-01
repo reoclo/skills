@@ -25,11 +25,13 @@ The binary is self-contained (no Node or Bun runtime needed).
 
 ```bash
 reoclo login          # OAuth device flow (opens a browser; --no-browser to print the URL)
-reoclo whoami         # confirm identity + active organization
+reoclo whoami         # confirm identity + how many organizations are granted
 reoclo org ls         # organizations your credential can access
-reoclo org use <slug> # switch active organization
+reoclo org current    # the organization commands in this directory will target
 reoclo logout         # remove stored credentials (defaults to the active profile)
 ```
+
+Org-scoped commands need an explicit organization. There is no persistent "active org" to switch. Select one per invocation with the global `--org <slug>` flag or `$REOCLO_ORG`, or bind the directory once with `reoclo init` (writes a `.reoclo` file). With none of the three set, an org-scoped command fails and tells you how to select one.
 
 ## Global flags (work on every command)
 
@@ -40,6 +42,7 @@ reoclo logout         # remove stored credentials (defaults to the active profil
 | `--verbose` | log HTTP requests (tokens redacted) |
 | `--no-color` | disable ANSI colors |
 | `--profile <name>` | use a named profile (multi-account/multi-env); equivalent to `$REOCLO_PROFILE` |
+| `--org <slug>` | run against this organization for one invocation; wins over `$REOCLO_ORG` and `.reoclo` |
 
 ## Command map
 
@@ -48,7 +51,7 @@ Every top-level command group. Drill in with `<group> --help`.
 | Group | Purpose |
 |-------|---------|
 | `login` / `logout` / `whoami` | authenticate, sign out, show identity |
-| `org` | switch the active organization within the OAuth grant |
+| `org` | list granted organizations (`ls`); print this directory's target (`current`) |
 | `profile` | manage named profiles (accounts / environments) |
 | `keyring` | move stored tokens between config.json and the OS keyring |
 | `servers` | list, inspect, rename servers; health, ports, uptime, reboot; cloud `power` |
@@ -356,7 +359,7 @@ Tunnels survive transient runner reconnects (parked, then resumed).
 
 ## Profiles
 
-Each profile holds its own credential and active org, so profiles let you switch between accounts and environments (for example prod vs. staging).
+Each profile holds its own credential, so profiles let you switch between accounts and environments (for example prod vs. staging). Organization selection is separate and per-invocation (`--org`, `$REOCLO_ORG`, or the `.reoclo` binding; see First run).
 
 ```bash
 reoclo profile ls                          # list configured profiles
