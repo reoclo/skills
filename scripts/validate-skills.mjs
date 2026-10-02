@@ -1,20 +1,19 @@
 #!/usr/bin/env node
 // scripts/validate-skills.mjs
 //
-// Self-contained, dependency-free validator for portable SKILL.md frontmatter.
-// It hand-parses the YAML frontmatter fence with simple line-oriented rules
-// instead of a YAML library. A naive line parser usually breaks on a value
-// that contains its own colon (a URL, a "CLI (or its `rc` alias): ..." style
-// description). This parser avoids that trap: it only treats a line as a new
-// top-level key when the line starts at column 0 and matches `key:` or
-// `key: value`; everything after the first colon on that line, including any
-// further colons, is the value. Indented lines are folded into the value of
-// the most recent top-level key, so they never get misread as their own key.
+// Validates the portable SKILL.md frontmatter of every skill in this repo.
+// The frontmatter is parsed with a real YAML parser (the `yaml` package),
+// the same strict parsing skill loaders apply. A value that is only valid to
+// a lenient line parser, such as an unquoted description containing
+// "colon-space" ("CLI (or its `rc` alias): ..."), fails here instead of
+// failing silently inside an agent's skill loader. Use a quoted or folded
+// (`>-`) scalar for any value that contains ": ".
 //
-// Run: node scripts/validate-skills.mjs
+// Run: npm ci && node scripts/validate-skills.mjs
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { parse } from "yaml";
 
 const PORTABLE_KEYS = new Set([
   "name",
@@ -44,50 +43,11 @@ function findSkillDirs() {
     .sort();
 }
 
-/** Pull the lines between the first two `---` fences out of a SKILL.md.
- *  Returns null when the file has no frontmatter fence. */
-function extractFrontmatterLines(content) {
-  const lines = content.split("\n");
-  if (lines[0].trim() !== "---") return null;
-  const end = lines.indexOf("---", 1);
-  if (end === -1) return null;
-  return lines.slice(1, end);
-}
-
-/** Hand-parse frontmatter lines into a map of top-level key to raw string
- *  value. Only the top-level keys matter for the portable-key check; any
- *  nested or block-scalar content is folded into its parent key's value so a
- *  multi-line description or a block-scalar body still reads as non-empty. */
-function parseFrontmatter(lines) {
-  const values = {};
-  const order = [];
-  let currentKey = null;
-  for (const rawLine of lines) {
-    if (rawLine.trim() === "") continue;
-    const isTopLevel = /^[^\s]/.test(rawLine);
-    if (isTopLevel) {
-      const match = /^([A-Za-z0-9_-]+):(?:\s(.*))?$/.exec(rawLine);
-      if (!match) continue; // not a recognizable "key:" or "key: value" line
-      const key = match[1];
-      currentKey = key;
-      if (!(key in values)) order.push(key);
-      values[key] = (match[2] ?? "").trim();
-    } else if (currentKey) {
-      values[currentKey] = `${values[currentKey]} ${rawLine.trim()}`.trim();
-    }
-  }
-  return { values, order };
-}
-
-function stripQuotes(value) {
-  if (value.length >= 2) {
-    const first = value[0];
-    const last = value[value.length - 1];
-    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-      return value.slice(1, -1);
-    }
-  }
-  return value;
+/** Return the text between the first two `---` fences of a SKILL.md, or null
+ *  when the file has no frontmatter fence. */
+function extractFrontmatter(content) {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content);
+  return match ? match[1] : null;
 }
 
 /** Validate one skill directory's SKILL.md against the portable-frontmatter
@@ -95,17 +55,28 @@ function stripQuotes(value) {
  *  the skill is valid). */
 function validateSkill(dirName) {
   const violations = [];
-  const path = join(root, dirName, "SKILL.md");
-  const content = readFileSync(path, "utf8");
-  const frontmatterLines = extractFrontmatterLines(content);
-  if (frontmatterLines === null) {
+  const content = readFileSync(join(root, dirName, "SKILL.md"), "utf8");
+  const frontmatter = extractFrontmatter(content);
+  if (frontmatter === null) {
     violations.push(`${dirName}: SKILL.md has no "---" frontmatter fence`);
     return violations;
   }
 
-  const { values, order } = parseFrontmatter(frontmatterLines);
+  let data;
+  try {
+    data = parse(frontmatter);
+  } catch (error) {
+    const message = error instanceof Error ? error.message.split("\n")[0] : String(error);
+    violations.push(`${dirName}: frontmatter is not valid YAML: ${message}`);
+    return violations;
+  }
 
-  for (const key of order) {
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    violations.push(`${dirName}: frontmatter must be a YAML mapping`);
+    return violations;
+  }
+
+  for (const key of Object.keys(data)) {
     if (!PORTABLE_KEYS.has(key)) {
       violations.push(
         `${dirName}: frontmatter key "${key}" is not one of the six portable keys ` +
@@ -114,26 +85,25 @@ function validateSkill(dirName) {
     }
   }
 
-  const name = stripQuotes(values.name ?? "");
-  const description = stripQuotes(values.description ?? "");
+  const fields = [];
+  for (const field of ["name", "description"]) {
+    const value = data[field];
+    if (value === undefined || value === null || value === "") {
+      violations.push(`${dirName}: frontmatter "${field}" is empty or missing`);
+    } else if (typeof value !== "string") {
+      violations.push(`${dirName}: frontmatter "${field}" must be a string`);
+    } else {
+      fields.push([field, value]);
+    }
+  }
 
-  if (!name) {
-    violations.push(`${dirName}: frontmatter is missing "name"`);
-  } else if (name !== dirName) {
+  if (typeof data.name === "string" && data.name !== "" && data.name !== dirName) {
     violations.push(
-      `${dirName}: frontmatter name "${name}" does not match the directory name "${dirName}"`,
+      `${dirName}: frontmatter name "${data.name}" does not match the directory name "${dirName}"`,
     );
   }
 
-  if (!description) {
-    violations.push(`${dirName}: frontmatter "description" is empty or missing`);
-  }
-
-  for (const [field, value] of [
-    ["name", name],
-    ["description", description],
-  ]) {
-    if (!value) continue;
+  for (const [field, value] of fields) {
     if (value.includes("<") || value.includes(">")) {
       violations.push(`${dirName}: "${field}" contains an angle bracket ("<" or ">")`);
     }
