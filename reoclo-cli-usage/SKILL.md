@@ -1,6 +1,15 @@
 ---
 name: reoclo-cli-usage
-description: Use when operating Reoclo from the terminal with the `reoclo` CLI (or its `rc` alias): signing in; managing servers, apps, stacks (definition groups), containers, and deployments; cloud server power controls; tailing and searching logs; running commands or shells on servers; tunnels; env vars; domains and verified root domains; secrets, secret bindings, and `run`; uptime monitors, status pages and their components, and incidents; alerts and notification channels; git repos, providers, and container registries; scheduled operations; audit logs; raw API requests; installing reoclo agent skills; and scripting Reoclo with JSON/YAML output.
+description: >-
+  Use when operating Reoclo from the terminal with the `reoclo` CLI (or its `rc`
+  alias): signing in; managing servers, apps, stacks (definition groups),
+  containers, and deployments; cloud server power controls; tailing and
+  searching logs; running commands or shells on servers; tunnels; env vars;
+  domains and verified root domains; secrets, secret bindings, and `run`; uptime
+  monitors, status pages and their components, and incidents; alerts and
+  notification channels; git repos, providers, and container registries;
+  scheduled operations; audit logs; raw API requests; installing reoclo agent
+  skills; and scripting Reoclo with JSON/YAML output.
 ---
 
 # reoclo-cli-usage: Operate Reoclo from the CLI
