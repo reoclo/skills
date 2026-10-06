@@ -3,9 +3,9 @@ name: reoclo-cli-usage
 description: >-
   Use when operating Reoclo from the terminal with the `reoclo` CLI (or its `rc`
   alias): signing in; managing servers, apps, stacks (definition groups),
-  containers, and deployments; cloud server power controls; tailing and
-  searching logs; running commands or shells on servers; tunnels; env vars;
-  domains and verified root domains; secrets, secret bindings, and `run`; uptime
+  containers, and deployments; cloud server power controls; the managed proxy;
+  tailing and searching logs; running commands or shells on servers; tunnels; env vars;
+  domains (including publishing DNS) and verified root domains; secrets, secret bindings, and `run`; uptime
   monitors, status pages and their components, and incidents; alerts and
   notification channels; git repos, providers, and container registries;
   scheduled operations; audit logs; raw API requests; installing reoclo agent
@@ -64,15 +64,16 @@ Every top-level command group. Drill in with `<group> --help`.
 | `profile` | manage named profiles (accounts / environments) |
 | `keyring` | move stored tokens between config.json and the OS keyring |
 | `servers` | list, inspect, rename servers; health, ports, uptime, reboot; cloud `power` |
+| `proxy` | a server's managed proxy: reconcile it now |
 | `containers` | fleet containers: list, inspect, logs, restart, recreate, scale, labels |
-| `apps` | list, inspect, deploy, restart apps; manage deployment `config` |
+| `apps` | list, inspect, create, deploy, restart apps; manage deployment `config` |
 | `groups` | definition groups (stacks): coordinated compose deployments and one-shot tasks; `stacks` is an alias |
 | `deployments` | deployment history, details, stages, build/runtime logs |
 | `logs` | tail, search, systemd journal, sources, storage stats and usage |
 | `env` | application environment variables (write-only values) |
-| `domains` | register, verify, and health-check domains |
+| `domains` | register, verify, publish DNS for, and health-check domains |
 | `verified-domains` | verified root domains: claim, prove ownership, list attached resources |
-| `secrets` | secret projects, keys, reveal, set, import, inject, bind to apps/stacks |
+| `secrets` | secret projects (create, rename, duplicate), keys, reveal, set, import, inject, bind to apps/stacks |
 | `run` | resolve granted secrets and run a command with them as env vars |
 | `monitors` | uptime monitors |
 | `status-pages` | public status pages and their `components` |
@@ -141,6 +142,16 @@ reoclo exec --env-file .env.prod <server> -- ./migrate.sh  # inject env (masked 
 reoclo shell <server>                                      # interactive shell
 ```
 
+`exec` waits for the command to finish. `--timeout <seconds>` (default 600) is both the command timeout and the basis for how long the CLI waits for the answer, so a long migration or build is no longer abandoned after 30 seconds. A signed-in `exec` with a timeout over 60 seconds goes through the streams host, which keeps Cloudflare from cutting the request off at about 100 seconds.
+
+## Managed proxy
+
+A server's managed proxy re-syncs on a periodic reconcile tick. Ask it to reconcile now instead of waiting:
+
+```bash
+reoclo proxy reconcile <server>        # re-sync the managed proxy immediately
+```
+
 ## Containers (fleet)
 
 Cross-server container operations. Target a container by `<server> <name>`.
@@ -161,6 +172,7 @@ reoclo containers labels <server> <name>          # patch labels (see --help)
 ```bash
 reoclo apps ls                         # incl. a CI column: the app's CI gate state
 reoclo apps get <idOrSlug>
+reoclo apps create --name <name> --server <server> ...   # create an application (see below)
 reoclo apps deploy <idOrSlug>          # trigger a deployment (--ref <git-ref>, --wait, --force-recreate)
 reoclo apps restart <idOrSlug>         # restart the backing container
 reoclo apps logs <idOrSlug>            # container logs for the app
@@ -173,6 +185,31 @@ reoclo deployments logs <id> --build   # build stage logs
 ```
 
 For `deployments get` and `deployments logs`, the deployment id alone is enough. `--app` stays accepted for scripts that already pass it.
+
+### Create an application
+
+`apps create` registers an application on a server. Pass `--name` and `--server`, plus what the app builds from:
+
+```bash
+reoclo apps create --name api --server web1 --repo acme/api --deploy-branch main
+reoclo apps create --name cache --server web1 --docker-image redis:7
+reoclo apps create --name stack --server web1 --repo acme/web \
+    --compose-file deploy/compose.staging.yml --compose-service web \
+    --deploy-branch staging --require-ci --bind staging-secrets
+```
+
+- `--server` and `--repo` take a name, slug, or id.
+- `--build-pack` is `dockerfile`, `docker_compose`, or `docker_image`. `--compose-file` and `--compose-service` imply `docker_compose`, and `--docker-image` implies `docker_image`. A `--build-pack` that contradicts them is refused.
+- `--deploy-branch <branch>` sets the branch that deploys. `--require-ci` deploys a push only after its CI checks pass. `--no-auto-deploy` turns off deploy on push.
+- `--bind <project>` binds a secret project by name or id at creation. Repeat it for more than one project.
+
+### Deploy a specific ref
+
+`apps deploy --ref <git-ref>` deploys a branch, tag, or commit SHA once, without changing the app's configured deploy branch. The credential needs the `applications:edit_config` permission to pass `--ref`.
+
+```bash
+reoclo apps deploy api --ref feat/login --wait
+```
 
 ## Stacks (definition groups)
 
@@ -223,8 +260,11 @@ reoclo domains add <fqdn>                  # then:
 reoclo domains verify <fqdnOrId>           # TXT record to add
 reoclo domains dns <fqdnOrId>              # DNS records + verification status
 reoclo domains health <fqdnOrId>           # DNS + TLS + uptime
+reoclo domains publish <fqdnOrId>          # write the expected DNS records to Cloudflare
 reoclo domains rm <fqdnOrId>               # decommission
 ```
+
+`domains publish` enables DNS publishing for the domain if it is not on yet, plans the changes, prints them (action, type, name, current, new), and applies them. Add `--proxied` to proxy new records through Cloudflare (the orange cloud). When every expected record is already correct it says so and changes nothing. It exits 1 when publishing is blocked, fails, or is still running after the wait, and `reoclo domains dns` shows where things stand. Run `domains dns` first to preview the records.
 
 Root-domain ownership is separate from per-FQDN registration. `verified-domains` claims a root (for example `example.com`) and proves ownership with one TXT record. Domains you then add under a verified root verify automatically.
 
@@ -242,7 +282,8 @@ reoclo verified-domains rm <rootOrId>
 Secrets live in projects. `run` injects the secrets a credential is granted into a child process as env vars. `run --env-file` and `secrets inject` render a `.env` template of `op://` references, resolving each value from Reoclo (a drop-in for 1Password's `op inject`, and the `op` binary is not needed).
 
 ```bash
-reoclo secrets projects --help         # manage secret projects
+reoclo secrets projects --help         # manage secret projects (ls, create, update, duplicate)
+reoclo secrets projects create <name> --description "Staging stack"   # create a project
 reoclo secrets ls --project <name>     # list keys in a project
 reoclo secrets get <key> --project <name>   # reveal a value
 reoclo secrets set <key> --project <name>   # create or update
@@ -451,6 +492,7 @@ Most commands honor `-o json|yaml` for piping. Two things to know:
 
 - **List commands emit one JSON object per line (NDJSON), not a JSON array.** Filter each line directly with `jq -r '.field'`, not `jq '.[]'` (which yields nothing).
 - **`reoclo secrets get` prints the bare secret value** and ignores `-o`, so it composes with `$(...)`.
+- Output written to a pipe or a file arrives in full, so `reoclo api <path> | jq` receives the whole document.
 
 ```bash
 reoclo servers ls -o json | jq -r 'select(.status=="active") | .slug'
