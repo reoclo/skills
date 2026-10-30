@@ -2,12 +2,13 @@
 name: reoclo-cli-usage
 description: >-
   Use when operating Reoclo from the terminal with the `reoclo` CLI (or its `rc`
-  alias): signing in; managing servers, apps, stacks (definition groups),
-  containers, and deployments; cloud server power controls; the managed proxy;
+  alias): signing in; deploying a linked git repository with `reoclo up`;
+  creating and managing servers, apps, stacks (definition groups), containers,
+  volumes, and deployments; build pools and builds; cloud server power controls; the managed proxy;
   tailing and searching logs; running commands or shells on servers; tunnels; env vars;
   domains (including publishing DNS) and verified root domains; secrets, secret bindings, and `run`; uptime
   monitors, status pages and their components, and incidents; alerts and
-  notification channels; git repos, providers, and container registries;
+  notification channels; git repos (scan, link), providers, and container registries;
   scheduled operations; audit logs; raw API requests; installing reoclo agent
   skills; and scripting Reoclo with JSON/YAML output.
 ---
@@ -59,6 +60,7 @@ Every top-level command group. Drill in with `<group> --help`.
 
 | Group | Purpose |
 |-------|---------|
+| `up` | deploy a linked repository in one step: creates its stack or app on the first run, deploys it on every run |
 | `login` / `logout` / `whoami` | authenticate, sign out, show identity |
 | `org` | list granted organizations (`ls`); print this directory's target (`current`) |
 | `profile` | manage named profiles (accounts / environments) |
@@ -66,9 +68,11 @@ Every top-level command group. Drill in with `<group> --help`.
 | `servers` | list, inspect, rename servers; health, ports, uptime, reboot; cloud `power` |
 | `proxy` | a server's managed proxy: reconcile it now |
 | `containers` | fleet containers: list, inspect, logs, restart, recreate, scale, labels |
-| `apps` | list, inspect, create, deploy, restart apps; manage deployment `config` |
-| `groups` | definition groups (stacks): coordinated compose deployments and one-shot tasks; `stacks` is an alias |
-| `deployments` | deployment history, details, stages, build/runtime logs |
+| `volumes` | Docker volumes on a server: list, inspect, create, delete, prune |
+| `apps` | list, inspect, create (and deploy with `--deploy`), deploy, restart apps; manage deployment `config` |
+| `groups` | definition groups (stacks): create from a repo's compose file, coordinated compose deployments, one-shot tasks, cancel; `stacks` is an alias |
+| `deployments` | deployment history, details, stages, build/runtime logs, cancel |
+| `build-pools` / `builds` | build servers: pools (persistent or ephemeral), cost estimates, builders; build history, logs, cancel |
 | `logs` | tail, search, systemd journal, sources, storage stats and usage |
 | `env` | application environment variables (write-only values) |
 | `domains` | register, verify, publish DNS for, and health-check domains |
@@ -80,7 +84,7 @@ Every top-level command group. Drill in with `<group> --help`.
 | `incidents` | incidents and incident updates |
 | `alerts` | alert instances, ack/resolve, mutes, routing, catalog |
 | `channels` | notification channels (Slack, Discord, and so on) |
-| `repos` | mirrored git repositories |
+| `repos` | mirrored git repositories: list, branches, scan for deployable services, link from a provider |
 | `providers` | git providers (GitHub, Gitea): connect, sync, status |
 | `registry` | container registry credentials; docker login/logout on a server |
 | `schedule` | scheduled operations: create, list, pause, trigger, runs |
@@ -167,6 +171,23 @@ reoclo containers scale <server> <name> <n>       # scale a Swarm service
 reoclo containers labels <server> <name>          # patch labels (see --help)
 ```
 
+## Deploy a repository with `reoclo up`
+
+`reoclo up` deploys a linked git repository in one step (CLI 0.93.0+). Run it inside a git checkout and it finds the linked repository from the `origin` remote, or pass `--repo <owner/name>`.
+
+```bash
+reoclo repos link acme/storefront        # once, if the repo is not linked yet
+reoclo up --server web1                  # first run: creates the stack or app, then deploys
+reoclo up                                # later runs: deploys what the first run created
+```
+
+- First run: `--server` is required. A repo with a compose file becomes a stack (one member per service; `--compose-file` picks the file when there are several). A repo with only a Dockerfile becomes an app (`--service` picks it when there are several). `--branch` sets the branch to scan and deploy, `--name` the stack name.
+- Later runs find the stack built from the repo's compose file, or the app built from the repo that is not in a stack, and deploy it. Several matches: pass `--compose-file` or `--service`.
+- It waits for the deployment by default and exits non-zero when it fails (`--no-wait` returns once triggered, `--wait-timeout` sets the limit, default 600 s; `--force-recreate` recreates unchanged containers).
+- `--compose-file` looks only for a stack and `--service` only for an app. A first run without `--server` exits 2.
+
+To see what a repo can deploy before creating anything: `reoclo repos scan <repo>`.
+
 ## Applications and deployments
 
 ```bash
@@ -182,6 +203,7 @@ reoclo deployments ls                  # organization deployment history (--app 
 reoclo deployments get <id>            # full details incl. build stages
 reoclo deployments stages <id>         # pipeline stages with status and duration
 reoclo deployments logs <id> --build   # build stage logs
+reoclo deployments cancel <id>         # cancel a running deployment (the step replacing services finishes first)
 ```
 
 For `deployments get` and `deployments logs`, the deployment id alone is enough. `--app` stays accepted for scripts that already pass it.
@@ -202,6 +224,11 @@ reoclo apps create --name stack --server web1 --repo acme/web \
 - `--build-pack` is `dockerfile`, `docker_compose`, or `docker_image`. `--compose-file` and `--compose-service` imply `docker_compose`, and `--docker-image` implies `docker_image`. A `--build-pack` that contradicts them is refused.
 - `--deploy-branch <branch>` sets the branch that deploys. `--require-ci` deploys a push only after its CI checks pass. `--no-auto-deploy` turns off deploy on push.
 - `--bind <project>` binds a secret project by name or id at creation. Repeat it for more than one project.
+- `--deploy` deploys the app right after creating it (CLI 0.93.0+). `--wait`, `--ref` and `--wait-timeout` need `--deploy`; `--wait` exits non-zero when the deployment fails.
+
+```bash
+reoclo apps create --name api --server web1 --repo acme/api --deploy --wait
+```
 
 ### Deploy a specific ref
 
@@ -218,13 +245,17 @@ A stack is a definition group: one docker-compose file, one member application f
 ```bash
 reoclo groups ls                              # kind, member count, CI gate, last deploy
 reoclo groups get <group>                     # incl. deploy branch, CI gate, compose path
+reoclo groups create --repo <repo> --server <server> --deploy --wait   # stack from a repo's compose file (CLI 0.93.0+)
 reoclo groups deploy <group> --wait           # coordinated deploy of every managed member (--force-recreate)
 reoclo groups redeploy <group> <service>      # redeploy one compose service only (--force-recreate)
 reoclo groups run <group> <service> --wait    # run a one-shot task member (compose run --rm)
 reoclo groups task-runs <group>               # one-shot run history (status, exit code)
 reoclo groups deployments <group>             # coordinated deployment history
 reoclo groups deployment <group> <numberOrId> --logs   # stages, per-service slices, log tails
+reoclo groups cancel <group> [numberOrId]     # cancel a running stack deployment (default: the newest one in progress)
 ```
+
+`groups create` scans the repo, makes one member per service in the compose file (`--compose-file` when there are several; `--branch`, `--name`), and with `--deploy` deploys the new stack. A compose service that names an image runs that image; every other service builds from the repo.
 
 `--wait` polls until the deployment or task finishes and exits non-zero on failure (`--wait-timeout` seconds, default 600). A one-shot task is a compose service under `profiles:` (a migration, for example). Deploy the stack one time before you run a task: the run uses the env files from the last stack deployment.
 
@@ -361,7 +392,9 @@ reoclo channels enable <id> | disable <id> | update <id> | delete <id>
 ## Git repos, providers, and registries
 
 ```bash
-reoclo repos ls | get <repo> | branches <repo>
+reoclo repos ls | get <repo> | branches <repo>   # ls --search <q> filters by name
+reoclo repos scan <repo> --ref main      # what the repo can deploy: compose files, services, build packs, ports, images
+reoclo repos link <owner/name>           # make a connected provider mirror the repo (GitHub App selection or Gitea sync), then wait (--no-wait, --wait-timeout)
 
 reoclo providers ls | get <provider>
 reoclo providers connect <provider>    # start OAuth (opens browser)
@@ -373,6 +406,19 @@ reoclo registry ls | get <id> | create | update <id> | rm <id>
 reoclo registry test                   # test a connection (ad-hoc)
 reoclo registry login <serverId>       # docker login on a managed server (CI)
 reoclo registry logout <serverId>
+```
+
+`repos link` takes `owner/name` or a git remote URL and needs the tenant admin role. When no connected provider can see the repo, it exits 5 and says how to grant access (Reoclo GitHub App access on GitHub, or `reoclo providers connect` for Gitea).
+
+## Build servers
+
+```bash
+reoclo build-pools ls | get <pool>        # build pools: persistent (registered servers) or ephemeral
+reoclo build-pools create ...             # see --help: persistent from build servers, or ephemeral Hetzner
+reoclo build-pools set <pool> ...         # update; --server replaces the whole builder list
+reoclo build-pools builders <pool>        # ephemeral builders with lifecycle state
+reoclo builds ls | get <id> | logs <id>   # build history
+reoclo builds cancel <id>                 # cancel a queued or running build
 ```
 
 ## Scheduled operations
