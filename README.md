@@ -26,8 +26,14 @@ tool (`reoclo-cli-*`, future `reoclo-api-*`, `reoclo-web-*`, …).
 
 ## Using these skills
 
-`reoclo init` and `reoclo skills install` install these skills for you. Each command
-downloads the skills from this repository and places one copy for each skill in
+The reoclo MCP server serves these skills as guides, both the local one
+(`reoclo mcp`) and the hosted one at `mcp.reoclo.com`. An agent connected to it calls
+`list_guides` and `get_guide`, or uses the matching MCP prompt, so a project needs no
+copies. The local server carries the skills as of its CLI release; the hosted one
+updates with each deploy.
+
+For an agent that does not use the MCP server, `reoclo skills install` installs copies.
+It downloads the skills from this repository and places one copy for each skill in
 `.agents/skills/<name>/`. Codex, Gemini CLI, opencode, and Cursor read skills from that
 directory.
 
@@ -37,21 +43,16 @@ the CLI copies the files instead of creating a link.
 
 ### Install with the CLI
 
-In a new project, run:
-
-```bash
-reoclo init
-```
-
-`reoclo init` links the project to your organization and installs the skills in one
-step. To install or refresh the skills in a project that is already linked, run:
+In the project, run:
 
 ```bash
 reoclo skills install
 ```
 
-Both commands detect which agent harnesses are on your machine and install skills for
-each one. Detected harnesses: Claude Code, Codex, Gemini CLI, opencode, and Cursor.
+It detects which agent harnesses are on your machine and installs skills for each one.
+Detected harnesses: Claude Code, Codex, Gemini CLI, opencode, and Cursor. `reoclo init`
+links a project to an organization and no longer installs skills.
+
 These flags change the install:
 
 | Flag | Effect |
@@ -100,7 +101,9 @@ See Anthropic's [skill-authoring guidance](https://docs.claude.com/en/docs/claud
 Edit a skill, commit, and push. Consumers pick up the change depending on how they
 installed:
 
-- CLI users: run `reoclo skills install` again to fetch the latest skills.
+- MCP users: the hosted server picks up the change on its next deploy, and `reoclo mcp`
+  with the next CLI release.
+- CLI installs: run `reoclo skills update` to refresh the installed skills.
 - Manual-clone users: pull this repository, then copy the updated files into
   `.agents/skills/`.
 
