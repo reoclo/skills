@@ -38,8 +38,10 @@ reoclo login          # OAuth device flow (opens a browser; --no-browser to prin
 reoclo whoami         # confirm identity + how many organizations are granted
 reoclo org ls         # organizations your credential can access
 reoclo org current    # the organization commands in this directory will target
-reoclo logout         # remove stored credentials (defaults to the active profile)
+reoclo logout         # end the session and remove stored credentials (defaults to the active profile)
 ```
+
+Sign in once per machine and profile. The CLI refreshes its own session, including the short-lived token it mints for `--org`, so a session in use stays valid. Run `reoclo login` only after a command has failed on authentication: exit code 3 with `not authenticated`, or a message that the session could not be refreshed and names `reoclo login`. Never run it before a task, on a schedule, or because a token might be old. Each login starts a new session, and a login started by an agent waits on a browser approval that nobody may be watching.
 
 Org-scoped commands need an explicit organization. There is no persistent "active org" to switch. Select one per invocation with the global `--org <slug>` flag or `$REOCLO_ORG`, or bind the directory once with `reoclo init` (writes a `.reoclo` file). With none of the three set, an org-scoped command fails and tells you how to select one.
 
@@ -478,11 +480,11 @@ Precedence: `--profile` flag, then `$REOCLO_PROFILE`, then the active profile fr
 
 ## Keyring
 
-By default the CLI stores tokens in the OS keyring. Move them if you need to:
+By default the CLI stores tokens in the OS keyring. On a machine without one, and for logins under CI, it keeps both the access and refresh tokens in `config.json`, readable only by your user. Move them if you need to:
 
 ```bash
 reoclo keyring status
-reoclo keyring migrate    # config.json -> OS keyring (--profile, else all)
+reoclo keyring migrate    # config.json -> OS keyring, refresh token included (--profile, else all)
 reoclo keyring export     # OS keyring -> config.json
 ```
 
@@ -498,9 +500,11 @@ reoclo deploy sync --help              # external deploy sync
 reoclo registry login <serverId>       # docker login on a managed server
 ```
 
-## Agent skills
+## Agent skills and guides
 
-`reoclo init` links a project to an organization and offers to install reoclo agent skills. The `skills` group manages them on their own:
+The reoclo MCP server serves these skills as guides, so an agent connected to it needs no copies in the repository. `list_guides` names them with their sections, `get_guide` returns a whole guide or one section, and each guide is also an MCP prompt. The local server updates with the CLI and the hosted one with each deploy.
+
+`reoclo init` links a project to an organization and does not install skills. To keep copies for an agent that does not use the MCP server, the `skills` group manages them:
 
 ```bash
 reoclo skills install    # pick skills, detect agent harnesses (`skills init` is an alias)
@@ -516,7 +520,7 @@ Skills install to `.agents/skills/<name>/` (read by Codex, Gemini, opencode, and
 reoclo mcp --org <slug>                # start the stdio MCP server (for MCP-capable agents)
 ```
 
-Like every org-scoped command, `mcp` needs an organization or it exits immediately with a selection error. In an MCP client config, put `--org <slug>` in the command arguments. Starting it from a directory with a `.reoclo` binding also works.
+Like every org-scoped command, `mcp` needs an organization or it exits immediately with a selection error. In an MCP client config, put `--org <slug>` in the command arguments. Starting it from a directory with a `.reoclo` binding also works. The server keeps its session fresh for as long as it runs, including under `--org`, and serves the reoclo guides (see Agent skills and guides).
 
 ## Raw API access
 
