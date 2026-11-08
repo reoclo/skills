@@ -119,7 +119,28 @@ reoclo servers uptime <idOrSlug>           # connectivity uptime (--hours)
 reoclo servers containers <idOrSlug>       # containers running on this server
 reoclo servers set-slug <idOrSlug> <slug>  # rename the slug
 reoclo servers reboot <idOrSlug>           # OS reboot via the runner (--yes to skip prompt)
+reoclo servers rm <idOrSlug>               # decommission (--yes to skip prompt; refused while apps are assigned)
 ```
+
+## Adding and hardening servers
+
+`add` and `harden` run Reoclo's setup script on the server as root, over your own SSH access. The runner cannot do this: its sudo access covers only systemctl, reboot and firewall tools. Log in as `root` or as a user with passwordless sudo. Needs CLI 0.99.0 or newer.
+
+```bash
+reoclo servers add --ssh root@203.0.113.9 --name web-1  # set up a fresh Ubuntu 22.04+ or Debian 12+ server, harden it, wait for it to connect
+reoclo servers add --ssh root@host --check   # dry run: print the plan, change nothing
+reoclo servers add --name web-1              # print a command to paste (holds a single-use token valid for one hour)
+reoclo servers add --name web-1 --cloud-init # print first-boot user data instead
+reoclo servers harden <server>               # harden a connected server, connecting as its admin user at its recorded IP
+reoclo servers harden <server> --check       # dry run
+reoclo servers harden <server> --print       # print the command to paste
+```
+
+Useful flags: `--port`, `-i <key>`, `--user <admin>`, `--firewall-allow 8080,9000:9100/udp`, `--trusted-ip <ip>`, `--ssh-only` (harden), `--no-harden` (add), `--name` (add, required without `--ssh`), `--hostname` (add), `--ssh <[user@]host>` (harden, when the recorded IP or user is wrong).
+
+Hardening turns off root and password SSH logins and enables a firewall that allows only SSH, 80 and 443. `harden` warns about other listening ports first; keep them open with `--firewall-allow`. Without a terminal, both commands need `--yes`. Only add `--yes` once the user has agreed to the change.
+
+Over MCP, `create_server_setup_script` returns the script for someone to run, `plan_server_hardening` returns the ports the firewall would block and the command to run, and `decommission_server` needs the server's slug as confirmation.
 
 ## Server power (cloud)
 
