@@ -93,7 +93,7 @@ Every top-level command group. Drill in with `<group> --help`.
 | `audit` | organization audit log |
 | `dashboard` | organization summary (counts, recent activity, deploys) |
 | `exec` / `shell` | run one-shot commands or an interactive shell on a server |
-| `tunnel` | TCP/UDP tunnels through a runner |
+| `tunnel` | TCP/UDP tunnels through a runner, saved tunnels kept up by a daemon, agent approvals |
 | `checkout` / `deploy` | CI helpers: clone a repo on a server, external deploy sync |
 | `init` | link this project to an organization and install reoclo skills |
 | `skills` | install, list, and update reoclo agent skills without re-running `init` |
@@ -478,6 +478,30 @@ reoclo tunnel close <tunnelId>
 
 Tunnels survive transient runner reconnects (parked, then resumed).
 
+### Saved tunnels
+
+A saved tunnel has a name and a background tunnel daemon on the person's machine keeps it up, so it outlives the terminal:
+
+```bash
+reoclo tunnel add prod-db --server prod-1 --target 5432               # forward tunnel on 127.0.0.1
+reoclo tunnel add grafana --server prod-1 --kind https --target 3000  # HTTPS hostname on this machine
+reoclo tunnel status                                                  # state of every saved tunnel
+reoclo tunnel down prod-db                                            # stop it, keep it saved
+reoclo tunnel daemon status
+```
+
+Add `--via tailscale` or `--via auto` to connect straight over the tailnet instead of the Reoclo relay; `reverse` tunnels always use the relay. `reoclo tunnel share <name> --tailnet` puts a `tcp` or `https` tunnel on the tailnet for other devices, and `reoclo tunnel unshare <name>` takes it off.
+
+### Tunnels for agents (MCP)
+
+The local MCP server (`reoclo mcp`) has five tunnel tools that drive the daemon: `list_local_tunnels`, `open_tunnel`, `close_tunnel`, `tunnel_status` and `save_tunnel`. The hosted server does not have them.
+
+- `open_tunnel` with `server` and `target` opens an ad-hoc forward tunnel: a free port on 127.0.0.1, no hostname, never saved, closed after `ttl_minutes` (default 60, at most 480). It waits up to 30 seconds, then returns `endpoint`, `address`, `expires_at` and, for an HTTPS tunnel, `ca_path`. Use the tunnel, then call `close_tunnel`. With `name` it brings up a saved tunnel instead.
+- A person must approve: saving, editing or bringing up a reverse tunnel or one bound on all interfaces (`bind_public`); sharing a tunnel on the tailnet or stopping a share; adding, changing or removing a hostname (every HTTPS tunnel has one); and trusting the local CA. Closing a tunnel, ad-hoc tunnels, and plain tcp or udp tunnels need no approval.
+- A call that needs approval waits up to 60 seconds. If it returns `status: "pending_approval"` with an `id`, tell the person what you are waiting for. They answer with `reoclo tunnel approvals`, `reoclo tunnel approve <id>` or `reoclo tunnel deny <id>`. Do not retry, and do not work around the approval with a shell command. Ask again only after they answer. Status `denied` means they said no.
+- Approvals expire after 10 minutes. You cannot approve, deny or change daemon settings; the daemon refuses those requests from an agent.
+- If a tool error says the sign-in expired, ask the person to run `reoclo login`.
+
 ## Profiles
 
 Each profile holds its own credential, so profiles let you switch between accounts and environments (for example prod vs. staging). Organization selection is separate and per-invocation (`--org`, `$REOCLO_ORG`, or the `.reoclo` binding; see First run).
@@ -541,7 +565,7 @@ Skills install to `.agents/skills/<name>/` (read by Codex, Gemini, opencode, and
 reoclo mcp --org <slug>                # start the stdio MCP server (for MCP-capable agents)
 ```
 
-Like every org-scoped command, `mcp` needs an organization or it exits immediately with a selection error. In an MCP client config, put `--org <slug>` in the command arguments. Starting it from a directory with a `.reoclo` binding also works. The server keeps its session fresh for as long as it runs, including under `--org`, and serves the reoclo guides (see Agent skills and guides).
+Like every org-scoped command, `mcp` needs an organization or it exits immediately with a selection error. In an MCP client config, put `--org <slug>` in the command arguments. Starting it from a directory with a `.reoclo` binding also works. The server keeps its session fresh for as long as it runs, including under `--org`, and serves the reoclo guides (see Agent skills and guides). It also has the tunnel tools described under Tunnels for agents (MCP).
 
 ## Raw API access
 
