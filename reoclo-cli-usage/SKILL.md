@@ -4,7 +4,7 @@ description: >-
   Use when operating Reoclo from the terminal with the `reoclo` CLI (or its `rc`
   alias): signing in; deploying a linked git repository with `reoclo up`;
   creating and managing servers, apps, stacks (definition groups), containers,
-  volumes, and deployments; build pools and builds; cloud server power controls; the managed proxy;
+  volumes, and deployments; build pools and builds; test servers (test pools, test files, test runs); cloud server power controls; the managed proxy;
   tailing and searching logs; running commands or shells on servers; tunnels; env vars;
   domains (including publishing DNS) and verified root domains; secrets, secret bindings, and `run`; uptime
   monitors, status pages and their components, and incidents; alerts and
@@ -75,6 +75,7 @@ Every top-level command group. Drill in with `<group> --help`.
 | `groups` | definition groups (stacks): create from a repo's compose file, coordinated compose deployments, one-shot tasks, cancel; `stacks` is an alias |
 | `deployments` | deployment history, details, stages, build/runtime logs, cancel |
 | `build-pools` / `builds` | build servers: pools (persistent or ephemeral), cost estimates, builders; build history, logs, cancel |
+| `test-pools` / `tests` | test servers: pools of machines that run test files; enable a repo, init and validate test files, run (`--wait` gates CI), runs, logs, cancel, rerun |
 | `logs` | tail, search, systemd journal, sources, storage stats and usage |
 | `env` | application environment variables (write-only values) |
 | `domains` | register, verify, publish DNS for, and health-check domains |
@@ -444,6 +445,58 @@ reoclo builds ls | get <id> | logs <id>   # build history
 reoclo builds cancel <id>                 # cancel a queued or running build
 ```
 
+## Test servers
+
+Test servers run the tests a repository declares in `ci/reoclo/tests/<name>.yml` on machines Reoclo creates in the organization's own AWS or Hetzner account. They are switched on per organization; when they are off the commands answer 404.
+
+```bash
+reoclo test-pools ls | get <pool> | machines <pool>      # pools by slug or id
+reoclo test-pools create --name CI --credential hetzner-main --location fsn1 --server-type cx33 \
+  --max-machines 4 --budget 25 --var NODE_ENV=test --secret API_TOKEN=...
+reoclo test-pools edit <pool> --max-machines 6 --unset-var NODE_ENV    # the slug and provider cannot change
+reoclo test-pools rm <pool> --yes                        # needs no live machines or active runs
+
+reoclo tests enable --repo acme/web          # organization admins; asks first, --yes skips; disable stops new runs
+reoclo tests ls --repo acme/web --refresh    # test files on the default branch, with their validation result
+reoclo tests init unit --pool ci             # writes a starter ci/reoclo/tests/unit.yml (--force overwrites)
+reoclo tests validate                        # checks every ci/reoclo/tests/*.yml with the API; exit 1 if any is invalid
+reoclo tests run unit --repo acme/web --ref main --wait
+reoclo tests runs --test unit --state failed # newest first
+reoclo tests show 12                         # a run by id or number, with its jobs
+reoclo tests logs 12 --job build --follow    # --job takes the job key; --follow polls until the run ends
+reoclo tests cancel 12 | rerun 12
+```
+
+- `--credential` takes a cloud credential id or label, and the pool's provider comes from it. `--secret KEY=VALUE` is stored encrypted and never shown again; `get` lists variable names only. Names starting with `REOCLO_` are reserved.
+- Enabling tests lets anyone who can push to the repository run commands on machines in the organization's cloud account. Enable it only when the user asked for it and trusts the repository.
+- `--repo` takes `owner/name` or an id and defaults to the `origin` remote of the current checkout. `tests init` and `tests validate` read the repository the command runs in.
+- `tests run --wait` follows the run, prints each job and step as it changes with the job logs, and exits `0` when the run passes, `1` when it fails and `2` when it errors or is cancelled. With `-o json` it prints progress to stderr and the final run to stdout. Ctrl+C asks whether to cancel; answering no stops waiting and leaves the run going (exit `130`).
+- Use `tests logs <run> --follow` to watch a run started elsewhere. Logs are kept for 30 days.
+
+In CI, authenticate with a machine token (`REOCLO_MACHINE_TOKEN`); an automation key cannot call these commands. Gate a pipeline on the exit code:
+
+```yaml
+# GitHub Actions
+- name: Run tests on Reoclo
+  run: reoclo tests run unit --repo acme/web --ref "$GITHUB_REF_NAME" --sha "$GITHUB_SHA" --wait
+  env:
+    REOCLO_MACHINE_TOKEN: ${{ secrets.REOCLO_MACHINE_TOKEN }}
+```
+
+```yaml
+# Woodpecker
+steps:
+  - name: reoclo-tests
+    image: debian:bookworm-slim
+    environment:
+      REOCLO_MACHINE_TOKEN:
+        from_secret: reoclo_machine_token
+    commands:
+      - apt-get update && apt-get install -y --no-install-recommends curl ca-certificates
+      - curl -sSL https://get.reoclo.com/cli | bash
+      - reoclo tests run unit --repo acme/web --ref "$CI_COMMIT_BRANCH" --sha "$CI_COMMIT_SHA" --wait
+```
+
 ## Scheduled operations
 
 ```bash
@@ -535,7 +588,7 @@ reoclo keyring export     # OS keyring -> config.json
 
 ## CI and automation credentials
 
-Automation keys are scoped to a fixed command set: `apps deploy`, `apps restart`, `exec`, `shell`, `checkout`, `registry login`, `registry logout`, `deploy sync`, `run`, and `secrets inject`. Everything else needs an interactive org login.
+Automation keys are scoped to a fixed command set: `apps deploy`, `apps restart`, `exec`, `shell`, `checkout`, `registry login`, `registry logout`, `deploy sync`, `run`, and `secrets inject`. Everything else needs an interactive org login or a machine token (`REOCLO_MACHINE_TOKEN`), which is what `tests run --wait` uses in a pipeline.
 
 CI helpers:
 
