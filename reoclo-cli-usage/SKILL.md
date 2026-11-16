@@ -456,6 +456,11 @@ reoclo test-pools create --name CI --credential hetzner-main --location fsn1 --s
   --max-machines 4 --budget 25 --var NODE_ENV=test --secret API_TOKEN=...
 reoclo test-pools edit <pool> --max-machines 6 --unset-var NODE_ENV    # the slug and provider cannot change
 reoclo test-pools edit <pool> --storage-credential r2-main --storage-bucket ci-cache --storage-region auto   # bucket for caches and artifacts; --no-storage removes it
+reoclo test-pools edit <pool> --market spot --registry ghcr-main   # spot is AWS only; --registry repeats and replaces the list, --no-registries clears it
+reoclo storage-credentials ls | get <name>                # S3-compatible keys a pool's bucket uses (CLI 0.114.0)
+printf '%s' "$R2_SECRET" | reoclo storage-credentials create --name r2-main --access-key-id <id> \
+  --endpoint https://<account>.r2.cloudflarestorage.com --secret-key-stdin
+reoclo storage-credentials edit r2-main --description "CI bucket" | rm r2-main --yes
 reoclo test-pools rm <pool> --yes                        # needs no live machines or active runs
 
 reoclo tests enable --repo acme/web          # organization admins; asks first, --yes skips; disable stops new runs
@@ -557,7 +562,7 @@ The local MCP server (`reoclo mcp`) has five tunnel tools that drive the daemon:
 - A person must approve: saving, editing or bringing up a reverse tunnel or one bound on all interfaces (`bind_public`); sharing a tunnel on the tailnet or stopping a share; adding, changing or removing a hostname (every HTTPS tunnel has one); and trusting the local CA. Closing a tunnel, ad-hoc tunnels, and plain tcp or udp tunnels need no approval.
 - A call that needs approval waits up to 60 seconds. If it returns `status: "pending_approval"` with an `id`, tell the person what you are waiting for. They answer with `reoclo tunnel approvals`, `reoclo tunnel approve <id>` or `reoclo tunnel deny <id>`. Do not retry, and do not work around the approval with a shell command. Ask again only after they answer. Status `denied` means they said no.
 - Approvals expire after 10 minutes. You cannot approve, deny or change daemon settings; the daemon refuses those requests from an agent.
-- If a tool error says the sign-in expired, ask the person to run `reoclo login`.
+- If a tool error says the sign-in expired, or that nobody is signed in, ask the person to run `reoclo login`.
 
 ## Profiles
 
@@ -623,7 +628,7 @@ reoclo mcp --org <slug>                # start the stdio MCP server bound to one
 reoclo mcp                             # unbound: every tool takes an organization argument
 ```
 
-Bound by `--org <slug>`, `$REOCLO_ORG` or a `.reoclo` file, the server acts on that organization and its tools take no `organization` argument. Without a binding (CLI 0.113.0 and later), every tool requires `organization` (the slug), and `whoami` lists the organizations you can act on; the tunnel tools still need a bound organization. Older CLIs exit at start without a binding, which an MCP client shows as a closed connection. The server keeps its session fresh for as long as it runs, including under `--org`, and serves the reoclo guides (see Agent skills and guides). It also has the tunnel tools described under Tunnels for agents (MCP).
+Bound by `--org <slug>`, `$REOCLO_ORG` or a `.reoclo` file, the server acts on that organization and its tools take no `organization` argument. Without a binding (CLI 0.113.0 and later), every tool requires `organization` (the slug), and `whoami` lists the organizations you can act on; `open_tunnel` and `save_tunnel` take an optional `organization` there (CLI 0.114.0). Older CLIs exit at start without a binding, which an MCP client shows as a closed connection. From CLI 0.114.0 the server also starts when nobody is signed in, and every tool except the guides answers with an error that says to run `reoclo login`. The server keeps its session fresh for as long as it runs, including under `--org`, and serves the reoclo guides (see Agent skills and guides). It also has the tunnel tools described under Tunnels for agents (MCP).
 
 ## Raw API access
 
@@ -646,7 +651,7 @@ Most commands honor `-o json|yaml` for piping. Things to know:
 - **List commands emit one JSON object per line (NDJSON), not a JSON array.** Filter each line directly with `jq -r '.field'`, not `jq '.[]'` (which yields nothing).
 - **`reoclo secrets get` prints the bare secret value** and ignores `-o`, so it composes with `$(...)`.
 - Output written to a pipe or a file arrives in full, so `reoclo api <path> | jq` receives the whole document.
-- **A confirmation prompt never waits when no one can answer it.** Without a terminal, with `CI` set, in a coding agent's shell (CLI 0.113.0 and later) or with `REOCLO_NO_INPUT=1`, the command says why on stderr and exits 1. Pass `--yes` once the user has agreed to the change.
+- **A confirmation prompt never waits when no one can answer it.** Without a terminal, with `CI` set, in a coding agent's shell (CLI 0.113.0 and later) or with `REOCLO_NO_INPUT=1`, the command says why on stderr and exits 1. Pass `--yes` once the user has agreed to the change. A masked secret prompt refuses the same way from CLI 0.114.0 and names its stdin flag (`--password-stdin`, `--secret-key-stdin`); pipe the secret into it rather than putting it on the command line.
 
 ```bash
 reoclo servers ls -o json | jq -r 'select(.status=="active") | .slug'
