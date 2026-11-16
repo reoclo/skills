@@ -312,6 +312,7 @@ A successful `env set` does not redeploy the application. The new values apply o
 reoclo domains ls
 reoclo domains get <fqdnOrId>
 reoclo domains add <fqdn>                  # then:
+reoclo domains add old.example.com --server web-1 --redirect-to https://example.com   # a redirect-only host needs no app
 reoclo domains verify <fqdnOrId>           # TXT record to add
 reoclo domains dns <fqdnOrId>              # DNS records + verification status
 reoclo domains health <fqdnOrId>           # DNS + TLS + uptime
@@ -454,12 +455,13 @@ reoclo test-pools ls | get <pool> | machines <pool>      # pools by slug or id
 reoclo test-pools create --name CI --credential hetzner-main --location fsn1 --server-type cx33 \
   --max-machines 4 --budget 25 --var NODE_ENV=test --secret API_TOKEN=...
 reoclo test-pools edit <pool> --max-machines 6 --unset-var NODE_ENV    # the slug and provider cannot change
+reoclo test-pools edit <pool> --storage-credential r2-main --storage-bucket ci-cache --storage-region auto   # bucket for caches and artifacts; --no-storage removes it
 reoclo test-pools rm <pool> --yes                        # needs no live machines or active runs
 
 reoclo tests enable --repo acme/web          # organization admins; asks first, --yes skips; disable stops new runs
 reoclo tests ls --repo acme/web --refresh    # test files on the default branch, with their validation result
 reoclo tests init unit --pool ci             # writes a starter ci/reoclo/tests/unit.yml (--force overwrites)
-reoclo tests validate                        # checks every ci/reoclo/tests/*.yml with the API; exit 1 if any is invalid
+reoclo tests validate --repo acme/web        # checks every ci/reoclo/tests/*.yml with the API; exit 1 if any is invalid
 reoclo tests run unit --repo acme/web --ref main --wait
 reoclo tests runs --test unit --state failed # newest first
 reoclo tests show 12                         # a run by id or number, with its jobs
@@ -469,7 +471,9 @@ reoclo tests cancel 12 | rerun 12
 
 - `--credential` takes a cloud credential id or label, and the pool's provider comes from it. `--secret KEY=VALUE` is stored encrypted and never shown again; `get` lists variable names only. Names starting with `REOCLO_` are reserved.
 - Enabling tests lets anyone who can push to the repository run commands on machines in the organization's cloud account. Enable it only when the user asked for it and trusts the repository.
-- `--repo` takes `owner/name` or an id and defaults to the `origin` remote of the current checkout. `tests init` and `tests validate` read the repository the command runs in.
+- `--repo` takes `owner/name` or an id and defaults to the `origin` remote of the current checkout. `tests init` and `tests validate` read the files of the repository the command runs in.
+- `tests validate` also prints warnings under a valid file: a pool that does not exist, a pool without the bucket a job's cache or artifacts need, and with `--repo` a repository whose tests are off. Warnings do not change the exit code. A job with a cache or artifacts cannot run until its pool has a bucket (`test-pools edit --storage-*`).
+- A step can run after an earlier one failed with `when: always` (or `when: failure`), for example to stop containers a test step started. `if:` is refused.
 - `tests run --wait` follows the run, prints each job and step as it changes with the job logs, and exits `0` when the run passes, `1` when it fails and `2` when it errors or is cancelled. With `-o json` it prints progress to stderr and the final run to stdout. Ctrl+C asks whether to cancel; answering no stops waiting and leaves the run going (exit `130`).
 - Use `tests logs <run> --follow` to watch a run started elsewhere. Logs are kept for 30 days.
 
@@ -615,10 +619,11 @@ Skills install to `.agents/skills/<name>/` (read by Codex, Gemini, opencode, and
 ## MCP server
 
 ```bash
-reoclo mcp --org <slug>                # start the stdio MCP server (for MCP-capable agents)
+reoclo mcp --org <slug>                # start the stdio MCP server bound to one organization
+reoclo mcp                             # unbound: every tool takes an organization argument
 ```
 
-Like every org-scoped command, `mcp` needs an organization or it exits immediately with a selection error. In an MCP client config, put `--org <slug>` in the command arguments. Starting it from a directory with a `.reoclo` binding also works. The server keeps its session fresh for as long as it runs, including under `--org`, and serves the reoclo guides (see Agent skills and guides). It also has the tunnel tools described under Tunnels for agents (MCP).
+Bound by `--org <slug>`, `$REOCLO_ORG` or a `.reoclo` file, the server acts on that organization and its tools take no `organization` argument. Without a binding (CLI 0.113.0 and later), every tool requires `organization` (the slug), and `whoami` lists the organizations you can act on; the tunnel tools still need a bound organization. Older CLIs exit at start without a binding, which an MCP client shows as a closed connection. The server keeps its session fresh for as long as it runs, including under `--org`, and serves the reoclo guides (see Agent skills and guides). It also has the tunnel tools described under Tunnels for agents (MCP).
 
 ## Raw API access
 
@@ -636,11 +641,12 @@ reoclo api <path> -X PUT --data @body.json               # raw JSON body (@file,
 
 ## Scripting
 
-Most commands honor `-o json|yaml` for piping. Two things to know:
+Most commands honor `-o json|yaml` for piping. Things to know:
 
 - **List commands emit one JSON object per line (NDJSON), not a JSON array.** Filter each line directly with `jq -r '.field'`, not `jq '.[]'` (which yields nothing).
 - **`reoclo secrets get` prints the bare secret value** and ignores `-o`, so it composes with `$(...)`.
 - Output written to a pipe or a file arrives in full, so `reoclo api <path> | jq` receives the whole document.
+- **A confirmation prompt never waits when no one can answer it.** Without a terminal, with `CI` set, in a coding agent's shell (CLI 0.113.0 and later) or with `REOCLO_NO_INPUT=1`, the command says why on stderr and exits 1. Pass `--yes` once the user has agreed to the change.
 
 ```bash
 reoclo servers ls -o json | jq -r 'select(.status=="active") | .slug'
