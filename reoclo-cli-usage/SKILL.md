@@ -143,6 +143,21 @@ Hardening turns off root and password SSH logins and enables a firewall that all
 
 Over MCP, `create_server_setup_script` returns the script for someone to run, `plan_server_hardening` returns the ports the firewall would block and the command to run, and `decommission_server` needs the server's slug as confirmation.
 
+### Tunnels-only servers
+
+A tunnels-only server accepts no inbound traffic: the firewall closes every port, SSH included, and you reach its services with `reoclo tunnel`. It needs the runner on the host. Reoclo refuses public domains, managed Caddy, preview environments and relocation onto it. Needs CLI 0.115.0 or newer.
+
+```bash
+reoclo servers add --ssh root@203.0.113.9 --name db-1 --tunnels-only  # set up a new server that opens no ports
+reoclo servers network show <server>                   # mode, status, drift, blockers, a tunnel command per listening service
+reoclo servers network set <server> tunnels-only       # switch an existing server (asks first; --yes to skip)
+reoclo servers network set <server> public             # restore the firewall rules saved when it went tunnels-only
+reoclo servers network reapply <server>                # close a port someone opened by hand
+reoclo tunnel <server> -L 2222:22                      # then: ssh -p 2222 <user>@127.0.0.1
+```
+
+A switch is refused while the server still needs public traffic; `network show` lists those blockers. Over MCP, use `get_server_network_access`, `set_server_network_access` and `reapply_server_network_access`. Ask before switching a server, because the switch closes public SSH and web ports.
+
 ## Server power (cloud)
 
 For cloud-managed servers, drive the provider's power controls. These work only where the server has a cloud provider and credentials configured, and only for operations that provider supports (check with `capabilities`). This is separate from `reoclo servers reboot`, which reboots the OS through the runner.
