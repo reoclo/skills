@@ -100,7 +100,7 @@ Every top-level command group. Drill in with `<group> --help`.
 | `skills` | install, list, and update reoclo agent skills without re-running `init` |
 | `api` | raw authenticated API request (escape hatch for endpoints without a command) |
 | `sync` | refresh this profile's cached capabilities from the server (no re-login) |
-| `mcp` | start the stdio MCP server |
+| `mcp` | start the stdio MCP server, or register it with Claude Code and Codex |
 | `completion` | shell completion for bash, zsh, fish |
 | `upgrade` | self-update the CLI |
 
@@ -644,6 +644,18 @@ reoclo mcp                             # unbound: every tool takes an organizati
 ```
 
 Bound by `--org <slug>`, `$REOCLO_ORG` or a `.reoclo` file, the server acts on that organization and its tools take no `organization` argument. Without a binding (CLI 0.113.0 and later), every tool requires `organization` (the slug), and `whoami` lists the organizations you can act on; `open_tunnel` and `save_tunnel` take an optional `organization` there (CLI 0.114.0). Older CLIs exit at start without a binding, which an MCP client shows as a closed connection. From CLI 0.114.0 the server also starts when nobody is signed in, and every tool except the guides answers with an error that says to run `reoclo login`. The server keeps its session fresh for as long as it runs, including under `--org`, and serves the reoclo guides (see Agent skills and guides). It also has the tunnel tools described under Tunnels for agents (MCP).
+
+### Register the server with coding agents
+
+```bash
+reoclo mcp agents                                    # agents found on this Mac and whether reoclo is registered (-o json for scripts)
+reoclo mcp install --agent claude-code               # add the reoclo server to ~/.claude.json
+reoclo mcp install --agent codex                     # add the reoclo server to ~/.codex/config.toml
+reoclo mcp install --agent all --command <path>      # every agent found, running <path> mcp
+reoclo mcp uninstall --agent all                     # remove only the reoclo entry
+```
+
+From CLI 0.117.0. `--agent` takes `claude-code` or `codex`, or `all` for every agent found. The agent runs `<command> mcp` over stdio. `<command>` is the path you ran `reoclo` by, not the symlink target, so `~/.local/bin/reoclo` stays valid across updates; `--command` overrides it. The entry carries no `--org`, so the server starts unbound (see above). Install is idempotent and updates an existing `reoclo` entry in place. Everything else in the file, comments included, stays byte for byte, the file is replaced atomically, and the first change keeps a copy as `<file>.reoclo-backup`. A config that cannot be parsed is reported and never overwritten.
 
 ## Raw API access
 
