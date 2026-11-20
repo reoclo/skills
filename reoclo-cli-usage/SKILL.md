@@ -655,7 +655,7 @@ reoclo mcp install --agent all --command <path>      # every agent found, runnin
 reoclo mcp uninstall --agent all                     # remove only the reoclo entry
 ```
 
-From CLI 0.117.0. `--agent` takes `claude-code` or `codex`, or `all` for every agent found. The agent runs `<command> mcp` over stdio. `<command>` is the path you ran `reoclo` by, not the symlink target, so `~/.local/bin/reoclo` stays valid across updates; `--command` overrides it. The entry carries no `--org`, so the server starts unbound (see above). Install is idempotent and updates an existing `reoclo` entry in place. Everything else in the file, comments included, stays byte for byte, the file is replaced atomically, and the first change keeps a copy as `<file>.reoclo-backup`. A config that cannot be parsed is reported and never overwritten.
+From CLI 0.118.0. `--agent` takes `claude-code` or `codex`, or `all` for every agent found. The agent runs `<command> mcp` over stdio. `<command>` is the path you ran `reoclo` by, not the symlink target, so `~/.local/bin/reoclo` stays valid across updates; `--command` overrides it. The entry carries no `--org`, so the server starts unbound (see above). Install is idempotent and updates an existing `reoclo` entry in place. Everything else in the file, comments included, stays byte for byte, the file is replaced atomically, and the first change keeps a copy as `<file>.reoclo-backup`. A config that cannot be parsed is reported and never overwritten.
 
 ## Raw API access
 
