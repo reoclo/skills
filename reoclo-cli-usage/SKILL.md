@@ -300,6 +300,18 @@ reoclo groups cancel <group> [numberOrId]     # cancel a running stack deploymen
 
 `--force-recreate` recreates containers even when the image and configuration did not change. Without it, a compose deploy leaves unchanged services running. Use it to restart a stack from a clean state, or to redeploy one unchanged service. On `groups redeploy` the recreate applies only to the named service.
 
+Blue-green deploys roll a service out beside its running container and move traffic only when its check passes:
+
+```bash
+reoclo groups config set <group> --blue-green on    # every service with a health check (on|off)
+reoclo groups get <group> -o json                   # read `blue_green` back; `groups ls` has a BLUE-GREEN column
+```
+
+- A service is gated when it, or the stack, has blue-green on and it has a health check. One-shot services and services without a check are never gated. A service that cannot run beside itself (a fixed `container_name`, or a published host port, for example) gets the standard replace and the deploy log says why.
+- Held-services rule: dependencies of the gated services update first, then the gated services roll out one at a time. The rest (workers, for example) update only after every gate has passed, and stay on the previous deployment when one fails.
+- A failed gate ends the deployment `partial`. Run `reoclo groups deployment <group> <n> --logs`: the `rollout` stage holds the gate lines, a service whose gate failed shows `rolled_back` (its previous container is still serving), and a service left behind shows `held`, each with a reason. Fix the cause and deploy again, or turn blue-green off and deploy to replace every service the standard way.
+- Without `--force-recreate` a gated service rolls out only when its image or configuration changed. Migrations must be expand-then-contract, because the previous version runs against the migrated database during and after a failed rollout.
+
 ## Logs
 
 ```bash
